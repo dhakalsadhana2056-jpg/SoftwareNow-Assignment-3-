@@ -1,4 +1,5 @@
 import cv2
+import numpy as np
 from pathlib import Path
 
 class ImageProcessor:
@@ -127,37 +128,112 @@ class Tile:
         self.flipped_horizontal = False
         self.flipped_vertical = False
 
-        # Encapsulated image attribute
-        self.__image = image
+        # Encapsulated image attributes
+        self.__image = None
+        self.__original_image = None
+
+        if image is not None:
+            self.__image = image.copy()
+            self.__original_image = image.copy()
 
     def get_image(self):
-        """Return the image stored in this tile."""
+        """Return the current image of this tile."""
         return self.__image
 
     def set_image(self, image):
-        """Set or update the image stored in this tile."""
-        self.__image = image
+        """Set both the current and original image."""
+        if image is None:
+            raise ValueError("Tile image cannot be None.")
+
+        self.__image = image.copy()
+        self.__original_image = image.copy()
+
+        self.rotation = 0
+        self.flipped_horizontal = False
+        self.flipped_vertical = False
 
     def rotate(self, angle):
-        """Rotate the logical orientation of the tile."""
+        """Rotate the tile image clockwise."""
+
+        if self.__image is None:
+            raise ValueError("Cannot rotate a tile without an image.")
+
+        if angle not in (90, 180, 270):
+            raise ValueError(
+                "Rotation angle must be 90, 180, or 270 degrees."
+            )
+
+        if angle == 90:
+            self.__image = cv2.rotate(
+                self.__image,
+                cv2.ROTATE_90_CLOCKWISE
+            )
+
+        elif angle == 180:
+            self.__image = cv2.rotate(
+                self.__image,
+                cv2.ROTATE_180
+            )
+
+        elif angle == 270:
+            self.__image = cv2.rotate(
+                self.__image,
+                cv2.ROTATE_90_COUNTERCLOCKWISE
+            )
+
         self.rotation = (self.rotation + angle) % 360
 
     def flip_horizontal(self):
-        """Toggle horizontal flip."""
+        """Flip the tile horizontally."""
+
+        if self.__image is None:
+            raise ValueError("Cannot flip a tile without an image.")
+
+        self.__image = cv2.flip(self.__image, 1)
+
         self.flipped_horizontal = not self.flipped_horizontal
 
     def flip_vertical(self):
-        """Toggle vertical flip."""
+        """Flip the tile vertically."""
+
+        if self.__image is None:
+            raise ValueError("Cannot flip a tile without an image.")
+
+        self.__image = cv2.flip(self.__image, 0)
+
         self.flipped_vertical = not self.flipped_vertical
 
+    def reset_orientation(self):
+        """Restore the tile to its original orientation."""
+
+        if self.__original_image is None:
+            raise ValueError("Tile does not contain an original image.")
+
+        self.__image = self.__original_image.copy()
+
+        self.rotation = 0
+        self.flipped_horizontal = False
+        self.flipped_vertical = False
+
+    def has_correct_orientation(self):
+        """Check whether the tile image matches its original image."""
+
+        if self.__image is None or self.__original_image is None:
+            return False
+
+        return np.array_equal(
+            self.__image,
+            self.__original_image
+        )
+
     def is_correct(self, current_position):
-        """Check whether the tile is in its correct position and orientation."""
+        """Check whether position and orientation are both correct."""
+
         return (
             current_position == self.correct_position
-            and self.rotation == 0
-            and not self.flipped_horizontal
-            and not self.flipped_vertical
+            and self.has_correct_orientation()
         )
+    
 class PuzzleModel:
     """Stores and manages the state of the puzzle."""
 
@@ -169,14 +245,32 @@ class PuzzleModel:
         self.hints_used = 0
         self.solved = False
 
-    def create_tiles(self):
-        """Create empty tile objects for the selected grid size."""
-        self.tiles = []
+    def create_tiles(self, image_tiles=None):
+        """Create tile objects for the selected grid size."""
 
         total_tiles = self.grid_size * self.grid_size
 
+        if image_tiles is not None:
+            if len(image_tiles) != total_tiles:
+                raise ValueError(
+                    "Number of image tiles does not match the grid size."
+                )
+
+        self.tiles = []
+
         for position in range(total_tiles):
-            tile = Tile(position, position)
+
+            image = None
+
+            if image_tiles is not None:
+                image = image_tiles[position]
+
+            tile = Tile(
+                tile_id=position,
+                correct_position=position,
+                image=image
+            )
+
             self.tiles.append(tile)
 
     def count_incorrect_tiles(self):
@@ -248,7 +342,6 @@ if __name__ == "__main__":
 
     print("Grid size:", puzzle.grid_size)
     print("Number of tiles:", len(puzzle.tiles))
-    print("Incorrect tiles:", puzzle.count_incorrect_tiles())
 
     try:
         image = ImageProcessor.load_image("test.jpg")
@@ -272,5 +365,57 @@ if __name__ == "__main__":
         print("Number of image tiles:", len(image_tiles))
         print("First tile size:", image_tiles[0].shape)
 
+        puzzle.create_tiles(image_tiles)
+        
+        print(
+            "Tile objects containing images:",
+            len(puzzle.tiles)
+        )
+
+        print(
+                    "Incorrect tiles after image loading:",
+                    puzzle.count_incorrect_tiles()
+        )
+
+        first_tile = puzzle.tiles[0]
+
+        print(
+            "First tile correct before rotation:",
+            first_tile.is_correct(0)
+        )
+
+        first_tile.rotate(90)
+
+        print(
+            "First tile rotation:",
+            first_tile.rotation
+        )
+
+        print(
+            "First tile correct after rotation:",
+            first_tile.is_correct(0)
+        )
+
+        first_tile.rotate(270)
+
+        print(
+            "First tile correct after rotating back:",
+            first_tile.is_correct(0)
+        )
+        first_tile.flip_horizontal()
+
+        print(
+            "Correct after horizontal flip:",
+            first_tile.is_correct(0)
+        )
+
+        first_tile.flip_horizontal()
+
+        print(
+            "Correct after flipping back:",
+            first_tile.is_correct(0)
+        )
+
     except (FileNotFoundError, ValueError) as error:
         print("Image error:", error)
+        
