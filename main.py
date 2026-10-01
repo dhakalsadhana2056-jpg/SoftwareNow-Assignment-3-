@@ -393,6 +393,52 @@ class PuzzleModel:
 
         return transformations
     
+    def reassemble_image(self):
+        """Reassemble the current puzzle tiles into one complete image."""
+
+        expected_tiles = self.grid_size * self.grid_size
+
+        if len(self.tiles) != expected_tiles:
+            raise ValueError(
+                "The number of tiles does not match the selected grid size."
+            )
+
+        tile_images = []
+
+        for tile in self.tiles:
+            image = tile.get_image()
+
+            if image is None:
+                raise ValueError(
+                    "Cannot reassemble the puzzle because a tile has no image."
+                )
+
+            tile_images.append(image)
+
+        # Make sure all tile images have identical dimensions.
+        first_shape = tile_images[0].shape
+
+        for image in tile_images:
+            if image.shape != first_shape:
+                raise ValueError(
+                    "All puzzle tiles must have the same dimensions."
+                )
+
+        rows = []
+
+        for row_index in range(self.grid_size):
+            start = row_index * self.grid_size
+            end = start + self.grid_size
+
+            row_images = tile_images[start:end]
+
+            combined_row = np.hstack(row_images)
+            rows.append(combined_row)
+
+        complete_image = np.vstack(rows)
+
+        return complete_image
+    
 class Transformation:
     """Parent class for puzzle transformations."""
 
@@ -468,6 +514,13 @@ if __name__ == "__main__":
         print("First tile size:", image_tiles[0].shape)
 
         puzzle.create_tiles(image_tiles)
+
+        solved_image = puzzle.reassemble_image()
+
+        print(
+            "Reassembled solved image size:",
+            solved_image.shape
+        )
         
         print(
             "Tile objects containing images:",
@@ -533,6 +586,19 @@ if __name__ == "__main__":
             "Player moves after scrambling:",
             puzzle.moves
         )
+
+        scrambled_image = puzzle.reassemble_image()
+        
+        print(
+            "Reassembled scrambled image size:",
+            scrambled_image.shape
+        )
+
+        cv2.imwrite(
+            "scrambled_preview.jpg",
+            scrambled_image
+        )
+        print("scrambled preview saved successfully.")
 
     except (FileNotFoundError, ValueError) as error:
         print("Image error:", error)
