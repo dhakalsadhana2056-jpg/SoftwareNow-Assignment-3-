@@ -1,3 +1,56 @@
+import cv2
+from pathlib import Path
+class ImageProcessor:
+    """Handles loading and preparing images for the puzzle."""
+
+    SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp"}
+
+    @staticmethod
+    def load_image(file_path):
+        """Load and validate an image from disk."""
+
+        path = Path(file_path)
+
+        if not path.exists():
+            raise FileNotFoundError(
+                "The selected image file does not exist."
+            )
+
+        if path.suffix.lower() not in ImageProcessor.SUPPORTED_EXTENSIONS:
+            raise ValueError(
+                "Unsupported image format. "
+                "Please use JPG, JPEG, PNG, or BMP."
+            )
+
+        image = cv2.imread(str(path))
+
+        if image is None:
+            raise ValueError("The image could not be opened.")
+
+        return image
+
+    @staticmethod
+    def resize_image(image, max_width=500, max_height=500):
+        """Resize an image while keeping its proportions."""
+
+        height, width = image.shape[:2]
+
+        scale = min(
+            max_width / width,
+            max_height / height,
+            1
+        )
+
+        new_width = int(width * scale)
+        new_height = int(height * scale)
+
+        resized_image = cv2.resize(
+            image,
+            (new_width, new_height),
+            interpolation=cv2.INTER_AREA
+        )
+
+        return resized_image
 class Tile:
     """Represents one tile of the puzzle."""
 
@@ -125,9 +178,18 @@ class FlipTransformation(Transformation):
 
 if __name__ == "__main__":
     puzzle = PuzzleModel(3)
-
     puzzle.create_tiles()
 
     print("Grid size:", puzzle.grid_size)
     print("Number of tiles:", len(puzzle.tiles))
     print("Incorrect tiles:", puzzle.count_incorrect_tiles())
+
+    try:
+        image = ImageProcessor.load_image("test.jpg")
+        image = ImageProcessor.resize_image(image)
+
+        print("Image loaded successfully.")
+        print("Image size:", image.shape)
+
+    except (FileNotFoundError, ValueError) as error:
+        print("Image error:", error)
