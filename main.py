@@ -442,6 +442,21 @@ class PuzzleModel:
         complete_image = np.vstack(rows)
 
         return complete_image
+    def solve(self):
+        """Restore every tile to its correct position and orientation."""
+
+        if not self.tiles:
+            raise ValueError("Cannot solve a puzzle with no tiles.")
+
+        self.tiles.sort(
+            key=lambda tile: tile.correct_position
+        )
+
+        for tile in self.tiles:
+            tile.reset_orientation()
+
+        self.moves = 0
+        self.solved = True
     
 class Transformation:
     """Parent class for puzzle transformations."""
@@ -503,6 +518,9 @@ class PuzzleApp:
         self.scrambled_photo = None
 
         self.grid_size = tk.IntVar(value=3)
+        self.moves_var = tk.StringVar(value="Moves: 0")
+        self.incorrect_var = tk.StringVar(value="Incorrect Tiles: 0")
+        self.hints_var = tk.StringVar(value="Hints Remaining: 3")
 
         self.create_widgets()
 
@@ -535,6 +553,39 @@ class PuzzleApp:
             side=tk.LEFT,
             padx=10
         )
+        status_frame = tk.Frame(self.root)
+        status_frame.pack(pady=5)
+
+        tk.Label(
+            status_frame,
+            textvariable=self.moves_var
+        ).pack(side=tk.LEFT, padx=10)
+
+        tk.Label(
+            status_frame,
+            textvariable=self.incorrect_var
+        ).pack(side=tk.LEFT, padx=10)
+
+        tk.Label(
+           status_frame,
+           textvariable=self.hints_var
+        ).pack(side=tk.LEFT, padx=10)
+
+        self.hint_button = tk.Button(
+            status_frame,
+            text="Hint",
+            command=self.show_hint,
+            state=tk.DISABLED
+        )
+        self.hint_button.pack(side=tk.LEFT, padx=5)
+
+        self.solve_button = tk.Button(
+            status_frame,
+            text="Solve",
+            command=self.solve_puzzle,
+            state=tk.DISABLED
+        )
+        self.solve_button.pack(side=tk.LEFT, padx=5)
 
         image_frame = tk.Frame(self.root)
         image_frame.pack(padx=10, pady=10)
@@ -645,6 +696,10 @@ class PuzzleApp:
         self.scrambled_image = scrambled_image
 
         self.display_images()
+        self.update_status()
+
+        self.hint_button.config(state=tk.NORMAL)
+        self.solve_button.config(state=tk.NORMAL)
 
     def display_images(self):
         """Display the original and scrambled images."""
@@ -670,6 +725,155 @@ class PuzzleApp:
             width=0,
             height=0
         )
+    def update_status(self):
+        """Update moves, incorrect tiles, and hints remaining."""
+
+        if self.puzzle is None:
+           self.moves_var.set("Moves: 0")
+           self.incorrect_var.set("Incorrect Tiles: 0")
+           self.hints_var.set("Hints Remaining: 3")
+           return
+
+        incorrect = self.puzzle.count_incorrect_tiles()
+        hints_remaining = 3 - self.puzzle.hints_used
+
+        self.moves_var.set(
+            f"Moves: {self.puzzle.moves}"
+        )
+
+        self.incorrect_var.set(
+            f"Incorrect Tiles: {incorrect}"
+        )
+
+        self.hints_var.set(
+            f"Hints Remaining: {hints_remaining}"
+        )
+    def draw_hint_circle(self, image, position):
+        """Draw a blue circle at the centre of a puzzle tile."""
+
+        grid_size = self.puzzle.grid_size
+
+        height, width = image.shape[:2]
+
+        tile_height = height // grid_size
+        tile_width = width // grid_size
+
+        row = position // grid_size
+        column = position % grid_size
+
+        centre_x = column * tile_width + tile_width // 2
+        centre_y = row * tile_height + tile_height // 2
+
+        radius = max(
+           8,
+           min(tile_width, tile_height) // 6
+        )
+
+        cv2.circle(
+            image,
+            (centre_x, centre_y),
+            radius,
+            (255, 0, 0),
+            3
+        )
+          
+    def show_hint(self):
+        """Show the location and correct home of one incorrect tile."""
+
+        if self.puzzle is None:
+           return
+
+        if self.puzzle.hints_used >= 3:
+            self.hint_button.config(state=tk.DISABLED)
+            return
+
+        incorrect_positions = []
+
+        for position, tile in enumerate(self.puzzle.tiles):
+            if not tile.is_correct(position):
+                incorrect_positions.append(position)
+
+        if not incorrect_positions:
+            messagebox.showinfo(
+                "Hint",
+                "The puzzle is already solved."
+            )
+            return
+
+        current_position = random.choice(
+            incorrect_positions
+        )
+
+        tile = self.puzzle.tiles[current_position]
+        correct_position = tile.correct_position
+
+        original_hint = self.original_image.copy()
+        puzzle_hint = self.scrambled_image.copy()
+
+        self.draw_hint_circle(
+            puzzle_hint,
+            current_position
+        )
+
+        self.draw_hint_circle(
+            original_hint,
+            correct_position
+        )
+
+        self.original_photo = self.convert_for_tkinter(
+            original_hint
+        )
+
+        self.scrambled_photo = self.convert_for_tkinter(
+            puzzle_hint
+        )
+
+        self.original_label.config(
+            image=self.original_photo
+        )
+
+        self.puzzle_label.config(
+            image=self.scrambled_photo
+        )
+
+        self.puzzle.hints_used += 1
+
+        self.update_status()
+
+        if self.puzzle.hints_used >= 3:
+            self.hint_button.config(
+                state=tk.DISABLED
+           )
+    def solve_puzzle(self):
+        """Instantly restore the puzzle."""
+
+        if self.puzzle is None:
+            return
+
+        try:
+            self.puzzle.solve()
+
+            self.scrambled_image = (
+                self.puzzle.reassemble_image()
+            )
+
+        except ValueError as error:
+            messagebox.showerror(
+                "Puzzle Error",
+                str(error)
+            )
+            return
+
+        self.display_images()
+        self.update_status()
+
+        self.hint_button.config(state=tk.DISABLED)
+        self.solve_button.config(state=tk.DISABLED)
+
+        messagebox.showinfo(
+            "Puzzle Solved",
+            "The puzzle has been solved."
+        )
 
 if __name__ == "__main__":
     root = tk.Tk()
@@ -677,4 +881,4 @@ if __name__ == "__main__":
     app = PuzzleApp(root)
 
     root.mainloop()
-    
+
