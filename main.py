@@ -1,7 +1,11 @@
 import cv2
 import numpy as np
 import random
+import tkinter as tk 
+
 from pathlib import Path
+from tkinter import filedialog, messagebox
+from PIL import Image, ImageTk 
 
 class ImageProcessor:
     """Handles loading and preparing images for the puzzle."""
@@ -484,121 +488,193 @@ class FlipTransformation(Transformation):
         elif self.direction == "vertical":
             puzzle.tiles[self.position].flip_vertical()
 
-if __name__ == "__main__":
-    puzzle = PuzzleModel(3)
-    puzzle.create_tiles()
+class PuzzleApp:
+    """Tkinter interface for the image puzzle game."""
 
-    print("Grid size:", puzzle.grid_size)
-    print("Number of tiles:", len(puzzle.tiles))
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Image Puzzle Game")
 
-    try:
-        image = ImageProcessor.load_image("test.jpg")
-        image = ImageProcessor.resize_image(image)
+        self.puzzle = None
+        self.original_image = None
+        self.scrambled_image = None
 
-        print("Image loaded successfully.")
-        print("Resized image size:", image.shape)
+        self.original_photo = None
+        self.scrambled_photo = None
 
-        prepared_image = ImageProcessor.prepare_for_grid(
+        self.grid_size = tk.IntVar(value=3)
+
+        self.create_widgets()
+
+    def create_widgets(self):
+        """Create the main interface widgets."""
+
+        control_frame = tk.Frame(self.root)
+        control_frame.pack(pady=10)
+
+        tk.Label(
+            control_frame,
+            text="Grid Size:"
+        ).pack(side=tk.LEFT, padx=5)
+
+        for size in (3, 4, 5):
+            tk.Radiobutton(
+                control_frame,
+                text=f"{size} x {size}",
+                variable=self.grid_size,
+                value=size
+            ).pack(side=tk.LEFT)
+
+        self.load_button = tk.Button(
+            control_frame,
+            text="Load Image",
+            command=self.load_image
+        )
+
+        self.load_button.pack(
+            side=tk.LEFT,
+            padx=10
+        )
+
+        image_frame = tk.Frame(self.root)
+        image_frame.pack(padx=10, pady=10)
+
+        original_frame = tk.Frame(image_frame)
+        original_frame.pack(
+            side=tk.LEFT,
+            padx=10
+        )
+
+        tk.Label(
+            original_frame,
+            text="Original Image"
+        ).pack()
+
+        self.original_label = tk.Label(
+            original_frame,
+            text="No image loaded",
+            width=45,
+            height=20,
+            relief="solid"
+        )
+
+        self.original_label.pack()
+
+        puzzle_frame = tk.Frame(image_frame)
+        puzzle_frame.pack(
+            side=tk.LEFT,
+            padx=10
+        )
+
+        tk.Label(
+            puzzle_frame,
+            text="Puzzle"
+        ).pack()
+
+        self.puzzle_label = tk.Label(
+            puzzle_frame,
+            text="No image loaded",
+            width=45,
+            height=20,
+            relief="solid"
+        )
+
+        self.puzzle_label.pack()
+
+    def convert_for_tkinter(self, image):
+        """Convert an OpenCV image into a Tkinter-compatible image."""
+
+        image_rgb = cv2.cvtColor(
             image,
-            puzzle.grid_size
+            cv2.COLOR_BGR2RGB
         )
 
-        print("Prepared image size:", prepared_image.shape)
+        pil_image = Image.fromarray(image_rgb)
 
-        image_tiles = ImageProcessor.split_into_tiles(
-            prepared_image,
-            puzzle.grid_size
+        return ImageTk.PhotoImage(pil_image)
+    
+    def load_image(self):
+        """Allow the player to select and load an image."""
+
+        file_path = filedialog.askopenfilename(
+            title="Choose an image",
+            filetypes=[
+                ("Image files", "*.jpg *.jpeg *.png *.bmp"),
+                ("JPEG files", "*.jpg *.jpeg"),
+                ("PNG files", "*.png"),
+                ("BMP files", "*.bmp")
+            ]
         )
 
-        print("Number of image tiles:", len(image_tiles))
-        print("First tile size:", image_tiles[0].shape)
+        if not file_path:
+            return
+    
+        try:
+            image = ImageProcessor.load_image(file_path)
+            image = ImageProcessor.resize_image(image)
 
-        puzzle.create_tiles(image_tiles)
+            prepared_image = ImageProcessor.prepare_for_grid(
+                image,
+                self.grid_size.get()
+            )
 
-        solved_image = puzzle.reassemble_image()
+            image_tiles = ImageProcessor.split_into_tiles(
+                prepared_image,
+                self.grid_size.get()
+            )
 
-        print(
-            "Reassembled solved image size:",
-            solved_image.shape
-        )
-        
-        print(
-            "Tile objects containing images:",
-            len(puzzle.tiles)
-        )
+            new_puzzle = PuzzleModel(
+                self.grid_size.get()
+            )
 
-        print(
-                    "Incorrect tiles after image loading:",
-                    puzzle.count_incorrect_tiles()
-        )
+            new_puzzle.create_tiles(image_tiles)
+            new_puzzle.scramble()
 
-        first_tile = puzzle.tiles[0]
+            scrambled_image = new_puzzle.reassemble_image()
 
-        print(
-            "First tile correct before rotation:",
-            first_tile.is_correct(0)
-        )
+        except (FileNotFoundError, ValueError) as error:
+            messagebox.showerror(
+                "Image Error",
+                str(error)
+            )
+            return
 
-        first_tile.rotate(90)
+        # Only update the application after everything succeeds.
+        self.puzzle = new_puzzle
+        self.original_image = prepared_image
+        self.scrambled_image = scrambled_image
 
-        print(
-            "First tile rotation:",
-            first_tile.rotation
-        )
+        self.display_images()
 
-        print(
-            "First tile correct after rotation:",
-            first_tile.is_correct(0)
-        )
+    def display_images(self):
+        """Display the original and scrambled images."""
 
-        first_tile.rotate(270)
-
-        print(
-            "First tile correct after rotating back:",
-            first_tile.is_correct(0)
-        )
-        first_tile.flip_horizontal()
-
-        print(
-            "Correct after horizontal flip:",
-            first_tile.is_correct(0)
+        self.original_photo = self.convert_for_tkinter(
+            self.original_image
         )
 
-        first_tile.flip_horizontal()
-
-        print(
-            "Correct after flipping back:",
-            first_tile.is_correct(0)
-        )
-        transformations = puzzle.scramble()
-
-        print(
-            "Transformations generated:",
-            len(transformations)
+        self.scrambled_photo = self.convert_for_tkinter(
+            self.scrambled_image
         )
 
-        print(
-            "Incorrect tiles after scrambling:",
-            puzzle.count_incorrect_tiles()
+        self.original_label.config(
+            image=self.original_photo,
+            text="",
+            width=0,
+            height=0
         )
 
-        print(
-            "Player moves after scrambling:",
-            puzzle.moves
+        self.puzzle_label.config(
+            image=self.scrambled_photo,
+            text="",
+            width=0,
+            height=0
         )
 
-        scrambled_image = puzzle.reassemble_image()
-        
-        print(
-            "Reassembled scrambled image size:",
-            scrambled_image.shape
-        )
+if __name__ == "__main__":
+    root = tk.Tk()
 
-        cv2.imwrite(
-            "scrambled_preview.jpg",
-            scrambled_image
-        )
-        print("scrambled preview saved successfully.")
+    app = PuzzleApp(root)
 
-    except (FileNotFoundError, ValueError) as error:
-        print("Image error:", error)
+    root.mainloop()
+    
