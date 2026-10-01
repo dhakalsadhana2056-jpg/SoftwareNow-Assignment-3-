@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+import random
 from pathlib import Path
 
 class ImageProcessor:
@@ -291,6 +292,107 @@ class PuzzleModel:
     def reset_moves(self):
         """Reset the move counter."""
         self.moves = 0
+
+    def get_transformation_count(self):
+        """Return the number of transformations for the selected grid."""
+
+        transformation_counts = {
+            3: 6,
+            4: 12,
+            5: 20
+        }
+
+        return transformation_counts[self.grid_size]
+    
+    def generate_random_transformations(self):
+        """Generate a complete list of random puzzle transformations."""
+
+        if not self.tiles:
+            raise ValueError("Cannot scramble a puzzle with no tiles.")
+
+        total_tiles = len(self.tiles)
+        transformation_count = self.get_transformation_count()
+
+        transformations = []
+
+        # Guarantee that all three required transformation types are used.
+        first_position, second_position = random.sample(
+            range(total_tiles),
+            2
+        )
+
+        transformations.append(
+            SwapTransformation(
+                first_position,
+                second_position
+            )
+        )
+
+        transformations.append(
+            RotateTransformation(
+                random.randrange(total_tiles),
+                random.choice((90, 180, 270))
+            )
+        )
+
+        transformations.append(
+            FlipTransformation(
+                random.randrange(total_tiles),
+                random.choice(("horizontal", "vertical"))
+            )
+        )
+
+        # Generate the remaining transformations randomly.
+        while len(transformations) < transformation_count:
+
+            transformation_type = random.choice(
+                ("swap", "rotate", "flip")
+            )
+
+            if transformation_type == "swap":
+                first_position, second_position = random.sample(
+                    range(total_tiles),
+                    2
+                )
+
+                transformation = SwapTransformation(
+                    first_position,
+                    second_position
+                )
+
+            elif transformation_type == "rotate":
+                transformation = RotateTransformation(
+                    random.randrange(total_tiles),
+                    random.choice((90, 180, 270))
+                )
+
+            else:
+                transformation = FlipTransformation(
+                    random.randrange(total_tiles),
+                    random.choice(("horizontal", "vertical"))
+                )
+
+            transformations.append(transformation)
+
+        random.shuffle(transformations)
+
+        return transformations
+    
+    def scramble(self):
+        """Generate and apply random transformations to the puzzle."""
+
+        transformations = self.generate_random_transformations()
+
+        for transformation in transformations:
+            transformation.apply(self)
+
+        # Automatic scrambling does not count as player moves.
+        self.moves = 0
+        self.hints_used = 0
+        self.solved = False
+
+        return transformations
+    
 class Transformation:
     """Parent class for puzzle transformations."""
 
@@ -415,7 +517,22 @@ if __name__ == "__main__":
             "Correct after flipping back:",
             first_tile.is_correct(0)
         )
+        transformations = puzzle.scramble()
+
+        print(
+            "Transformations generated:",
+            len(transformations)
+        )
+
+        print(
+            "Incorrect tiles after scrambling:",
+            puzzle.count_incorrect_tiles()
+        )
+
+        print(
+            "Player moves after scrambling:",
+            puzzle.moves
+        )
 
     except (FileNotFoundError, ValueError) as error:
         print("Image error:", error)
-        
