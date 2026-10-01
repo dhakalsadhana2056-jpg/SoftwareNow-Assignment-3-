@@ -1,5 +1,6 @@
 import cv2
 from pathlib import Path
+
 class ImageProcessor:
     """Handles loading and preparing images for the puzzle."""
 
@@ -31,7 +32,7 @@ class ImageProcessor:
 
     @staticmethod
     def resize_image(image, max_width=500, max_height=500):
-        """Resize an image while keeping its proportions."""
+        """Resize an image while keeping its original proportions."""
 
         height, width = image.shape[:2]
 
@@ -51,6 +52,70 @@ class ImageProcessor:
         )
 
         return resized_image
+
+    @staticmethod
+    def prepare_for_grid(image, grid_size):
+        """Crop the image to a square that divides evenly by the grid size."""
+
+        if grid_size not in (3, 4, 5):
+            raise ValueError("Grid size must be 3, 4, or 5.")
+
+        height, width = image.shape[:2]
+
+        # Use the smaller dimension to create a centred square
+        side = min(height, width)
+
+        start_y = (height - side) // 2
+        start_x = (width - side) // 2
+
+        square_image = image[
+            start_y:start_y + side,
+            start_x:start_x + side
+        ]
+
+        # Make the square dimension divisible by the grid size
+        usable_side = side - (side % grid_size)
+
+        if usable_side <= 0:
+            raise ValueError("Image is too small for the selected grid size.")
+
+        offset = (side - usable_side) // 2
+
+        prepared_image = square_image[
+            offset:offset + usable_side,
+            offset:offset + usable_side
+        ].copy()
+
+        return prepared_image
+
+    @staticmethod
+    def split_into_tiles(image, grid_size):
+        """Split the image into equal-sized tiles."""
+
+        height, width = image.shape[:2]
+
+        tile_height = height // grid_size
+        tile_width = width // grid_size
+
+        tiles = []
+
+        for row in range(grid_size):
+            for column in range(grid_size):
+                start_y = row * tile_height
+                end_y = start_y + tile_height
+
+                start_x = column * tile_width
+                end_x = start_x + tile_width
+
+                tile_image = image[
+                    start_y:end_y,
+                    start_x:end_x
+                ].copy()
+
+                tiles.append(tile_image)
+
+        return tiles
+
 class Tile:
     """Represents one tile of the puzzle."""
 
@@ -137,6 +202,7 @@ class Transformation:
 
     def apply(self, puzzle):
         raise NotImplementedError("Subclasses must implement apply().")
+    
 class SwapTransformation(Transformation):
     """Swap two tiles."""
 
@@ -189,7 +255,22 @@ if __name__ == "__main__":
         image = ImageProcessor.resize_image(image)
 
         print("Image loaded successfully.")
-        print("Image size:", image.shape)
+        print("Resized image size:", image.shape)
+
+        prepared_image = ImageProcessor.prepare_for_grid(
+            image,
+            puzzle.grid_size
+        )
+
+        print("Prepared image size:", prepared_image.shape)
+
+        image_tiles = ImageProcessor.split_into_tiles(
+            prepared_image,
+            puzzle.grid_size
+        )
+
+        print("Number of image tiles:", len(image_tiles))
+        print("First tile size:", image_tiles[0].shape)
 
     except (FileNotFoundError, ValueError) as error:
         print("Image error:", error)
