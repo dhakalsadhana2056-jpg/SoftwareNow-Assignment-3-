@@ -396,7 +396,62 @@ class PuzzleModel:
         self.solved = False
 
         return transformations
-    
+
+    def swap_tiles(self, first_position, second_position):
+        """Swap two puzzle tiles and count one player move."""
+
+        total_tiles = len(self.tiles)
+
+        if not (
+            0 <= first_position < total_tiles
+            and 0 <= second_position < total_tiles
+        ):
+            raise ValueError("Tile position is outside the puzzle.")
+
+        if first_position == second_position:
+            return False
+
+        transformation = SwapTransformation(
+            first_position,
+            second_position
+        )
+
+        transformation.apply(self)
+
+        self.moves += 1
+
+        return True
+
+    def rotate_tile(self, position, angle=90):
+        """Rotate one puzzle tile and count one player move."""
+
+        if not 0 <= position < len(self.tiles):
+            raise ValueError("Tile position is outside the puzzle.")
+
+        transformation = RotateTransformation(
+            position,
+            angle
+        )
+
+        transformation.apply(self)
+
+        self.moves += 1
+
+    def flip_tile(self, position, direction="horizontal"):
+        """Flip one puzzle tile and count one player move."""
+
+        if not 0 <= position < len(self.tiles):
+            raise ValueError("Tile position is outside the puzzle.")
+
+        transformation = FlipTransformation(
+            position,
+            direction
+        )
+
+        transformation.apply(self)
+
+        self.moves += 1
+
     def reassemble_image(self):
         """Reassemble the current puzzle tiles into one complete image."""
 
@@ -513,6 +568,8 @@ class PuzzleApp:
         self.puzzle = None
         self.original_image = None
         self.scrambled_image = None
+
+        self.selected_position = None
 
         self.original_photo = None
         self.scrambled_photo = None
@@ -632,6 +689,19 @@ class PuzzleApp:
 
         self.puzzle_label.pack()
 
+        self.puzzle_label.bind(
+            "<Button-1>",
+            self.on_puzzle_left_click
+        )
+        self.puzzle_label.bind(
+            "<Button-3>",
+            self.on_puzzle_right_click
+        )
+        self.puzzle_label.bind(
+            "<Shift-Button-1>",
+            self.on_puzzle_shift_left_click
+        )
+
     def convert_for_tkinter(self, image):
         """Convert an OpenCV image into a Tkinter-compatible image."""
 
@@ -694,6 +764,7 @@ class PuzzleApp:
         self.puzzle = new_puzzle
         self.original_image = prepared_image
         self.scrambled_image = scrambled_image
+        self.selected_position = None
 
         self.display_images()
         self.update_status()
@@ -708,9 +779,11 @@ class PuzzleApp:
             self.original_image
         )
 
+        puzzle_display = self.create_puzzle_display_image()
+
         self.scrambled_photo = self.convert_for_tkinter(
-            self.scrambled_image
-        )
+            puzzle_display
+)
 
         self.original_label.config(
             image=self.original_photo,
@@ -725,6 +798,110 @@ class PuzzleApp:
             width=0,
             height=0
         )
+
+    def create_puzzle_display_image(self):
+        """Create a puzzle image with grid lines and status markings."""
+
+        if self.scrambled_image is None:
+            return None
+
+        display_image = self.scrambled_image.copy()
+
+        if self.puzzle is None:
+            return display_image
+
+        grid_size = self.puzzle.grid_size
+        height, width = display_image.shape[:2]
+
+        tile_height = height // grid_size
+        tile_width = width // grid_size
+
+        # Draw faint grid lines.
+        for index in range(1, grid_size):
+            x = index * tile_width
+
+            cv2.line(
+                display_image,
+                (x, 0),
+                (x, height),
+                (180, 180, 180),
+                1
+            )
+
+            y = index * tile_height
+
+            cv2.line(
+                display_image,
+                (0, y),
+                (width, y),
+                (180, 180, 180),
+                1
+            )
+
+        # Draw green ticks on correctly placed and oriented tiles.
+        for position, tile in enumerate(self.puzzle.tiles):
+
+            if not tile.is_correct(position):
+                continue
+
+            row = position // grid_size
+            column = position % grid_size
+
+            x1 = column * tile_width
+            y1 = row * tile_height
+
+            tick_start = (
+                x1 + int(tile_width * 0.68),
+                y1 + int(tile_height * 0.22)
+            )
+
+            tick_middle = (
+                x1 + int(tile_width * 0.76),
+                y1 + int(tile_height * 0.32)
+            )
+
+            tick_end = (
+                x1 + int(tile_width * 0.90),
+                y1 + int(tile_height * 0.12)
+            )
+
+            cv2.line(
+                display_image,
+                tick_start,
+                tick_middle,
+                (0, 255, 0),
+                3
+            )
+
+            cv2.line(
+                display_image,
+                tick_middle,
+                tick_end,
+                (0, 255, 0),
+                3
+            )
+
+        # Draw a red border around the selected tile.
+        if self.selected_position is not None:
+
+            row = self.selected_position // grid_size
+            column = self.selected_position % grid_size
+
+            x1 = column * tile_width
+            y1 = row * tile_height
+
+            x2 = x1 + tile_width - 1
+            y2 = y1 + tile_height - 1
+
+            cv2.rectangle(
+                display_image,
+                (x1 + 2, y1 + 2),
+                (x2 - 2, y2 - 2),
+                (0, 0, 255),
+                3
+            )
+
+        return display_image
     def update_status(self):
         """Update moves, incorrect tiles, and hints remaining."""
 
@@ -748,6 +925,223 @@ class PuzzleApp:
         self.hints_var.set(
             f"Hints Remaining: {hints_remaining}"
         )
+
+    def check_for_completion(self):
+        """Check whether the player has completed the puzzle."""
+
+        if self.puzzle is None:
+            return
+
+        if not self.puzzle.check_solved():
+            return
+
+        self.selected_position = None
+
+        self.scrambled_image = self.puzzle.reassemble_image()
+
+        self.display_images()
+        self.update_status()
+
+        self.hint_button.config(state=tk.DISABLED)
+        self.solve_button.config(state=tk.DISABLED)
+
+        messagebox.showinfo(
+            "Puzzle Complete",
+            f"Congratulations! You solved the puzzle in "
+            f"{self.puzzle.moves} moves."
+        )
+
+    def get_clicked_position(self, event):
+        """Return the puzzle position clicked by the player."""
+
+        if self.puzzle is None or self.scrambled_image is None:
+            return None
+
+        height, width = self.scrambled_image.shape[:2]
+        grid_size = self.puzzle.grid_size
+
+        # Ignore clicks outside the actual image.
+        if event.x < 0 or event.y < 0:
+            return None
+
+        if event.x >= width or event.y >= height:
+            return None
+
+        tile_width = width // grid_size
+        tile_height = height // grid_size
+
+        column = event.x // tile_width
+        row = event.y // tile_height
+
+        position = row * grid_size + column
+
+        if position < 0 or position >= len(self.puzzle.tiles):
+            return None
+
+        return position
+
+    def on_puzzle_left_click(self, event):
+        """Select, deselect, or swap puzzle tiles."""
+
+        if self.puzzle is None:
+            return
+
+        if self.puzzle.solved:
+            return
+
+        # Shift + left-click is handled separately.
+        if event.state & 0x0001:
+            return
+
+        position = self.get_clicked_position(event)
+
+        if position is None:
+            return
+
+        # First click selects a tile.
+        if self.selected_position is None:
+            self.selected_position = position
+
+            self.display_images()
+
+            print(
+               "Selected tile:",
+                self.selected_position
+            )
+            
+
+            return
+
+        # Clicking the selected tile again deselects it.
+        if position == self.selected_position:
+            self.selected_position = None
+
+            self.display_images()
+
+            print("Tile deselected")
+
+            return
+
+        # Clicking a different tile swaps the two.
+        first_position = self.selected_position
+
+        try:
+            self.puzzle.swap_tiles(
+                first_position,
+                position
+            )
+
+            self.scrambled_image = (
+                self.puzzle.reassemble_image()
+            )
+
+        except ValueError as error:
+            messagebox.showerror(
+                "Puzzle Error",
+                str(error)
+            )
+
+            self.selected_position = None
+            return
+
+        self.selected_position = None
+
+        self.display_images()
+        self.update_status()
+        self.check_for_completion()
+
+        print(
+            "Swapped tiles:",
+            first_position,
+            "and",
+            position
+        )
+
+    def on_puzzle_right_click(self, event):
+        """Rotate the clicked tile 90 degrees clockwise."""
+
+        if self.puzzle is None:
+            return
+
+        if self.puzzle.solved:
+            return
+
+        position = self.get_clicked_position(event)
+
+        if position is None:
+            return
+
+        # Any selected tile is deselected.
+        self.selected_position = None
+
+        try:
+            self.puzzle.rotate_tile(
+                position,
+                90
+            )
+
+            self.scrambled_image = (
+            self.puzzle.reassemble_image()
+            )
+
+        except ValueError as error:
+            messagebox.showerror(
+                "Puzzle Error",
+                str(error)
+            )
+            return
+
+        self.display_images()
+        self.update_status()
+        self.check_for_completion()
+
+        print(
+            "Rotated tile:",
+            position
+        )
+    def on_puzzle_shift_left_click(self, event):
+        """Flip the clicked tile horizontally."""
+
+        if self.puzzle is None:
+            return
+
+        if self.puzzle.solved:
+            return
+
+        position = self.get_clicked_position(event)
+
+        if position is None:
+            return
+
+        # Deselect any currently selected tile.
+        self.selected_position = None
+
+        try:
+            self.puzzle.flip_tile(
+                position,
+                "horizontal"
+            )
+
+            self.scrambled_image = (
+                self.puzzle.reassemble_image()
+            )
+
+        except ValueError as error:
+            messagebox.showerror(
+                "Puzzle Error",
+                str(error)
+            )
+            return
+
+        self.display_images()
+        self.update_status()
+        self.check_for_completion()
+
+        print(
+            "Horizontally flipped tile:",
+            position
+        )
+
     def draw_hint_circle(self, image, position):
         """Draw a blue circle at the centre of a puzzle tile."""
 
