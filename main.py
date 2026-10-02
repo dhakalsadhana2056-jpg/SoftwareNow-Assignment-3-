@@ -1004,12 +1004,6 @@ class PuzzleApp:
 
             self.display_images()
 
-            print(
-               "Selected tile:",
-                self.selected_position
-            )
-            
-
             return
 
         # Clicking the selected tile again deselects it.
@@ -1017,8 +1011,6 @@ class PuzzleApp:
             self.selected_position = None
 
             self.display_images()
-
-            print("Tile deselected")
 
             return
 
@@ -1050,12 +1042,6 @@ class PuzzleApp:
         self.update_status()
         self.check_for_completion()
 
-        print(
-            "Swapped tiles:",
-            first_position,
-            "and",
-            position
-        )
 
     def on_puzzle_right_click(self, event):
         """Rotate the clicked tile 90 degrees clockwise."""
@@ -1095,10 +1081,7 @@ class PuzzleApp:
         self.update_status()
         self.check_for_completion()
 
-        print(
-            "Rotated tile:",
-            position
-        )
+        
     def on_puzzle_shift_left_click(self, event):
         """Flip the clicked tile horizontally."""
 
@@ -1137,10 +1120,7 @@ class PuzzleApp:
         self.update_status()
         self.check_for_completion()
 
-        print(
-            "Horizontally flipped tile:",
-            position
-        )
+        
 
     def draw_hint_circle(self, image, position):
         """Draw a blue circle at the centre of a puzzle tile."""
